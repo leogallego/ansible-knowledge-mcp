@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "ansible-knowledge": {
+      "command": "uv",
+      "args": ["run", "--directory", ".", "ansible-knowledge-mcp"]
+    }
+  }
+}
