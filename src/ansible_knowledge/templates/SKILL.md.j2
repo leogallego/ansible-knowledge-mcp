@@ -1,0 +1,140 @@
+---
+name: {{ module_name }}
+description: >-
+  {{ short_description }}
+{% if is_api_module %}
+  Use when managing {{ skill_name | replace('_', ' ') }} resources via API with Ansible.
+{% else %}
+  Use when managing {{ skill_name | replace('_', ' ') }} resources on remote hosts via Ansible.
+{% endif %}
+---
+
+# {{ module_name }}
+
+{{ short_description }}
+
+## When to Use This Skill
+
+{% if is_api_module %}
+Use the `{{ module_name }}` Ansible module when you need to manage {{ skill_name | replace('_', ' ') }} resources via API. This module runs on the **control host** (not over SSH) and communicates with an external API.
+
+- Runs with `connection: local` -- no SSH to remote hosts
+- **Does not** require `become`/sudo
+- You need **idempotent** state management (ensure a desired state, not just run a command)
+- You want **audit trails** and **dry-run** capability via `--check`
+{% else %}
+Use the `{{ module_name }}` Ansible module when you need to manage {{ skill_name | replace('_', ' ') }} on remote hosts. This is preferable to local CLI commands when:
+
+- Targeting one or more **remote** hosts over SSH
+- You need **idempotent** state management (ensure a desired state, not just run a command)
+- You want **audit trails** and **dry-run** capability via `--check`
+
+Do **not** use this for basic local file operations or CLI tasks that the agent can handle natively.
+{% endif %}
+
+## Parameters
+
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+{% for p in params -%}
+| `{{ p.name }}` | {{ p.type }} | {{ "yes" if p.required else "no" }} | {{ p.default if p.default is not none else "-" }} | {{ p.description }} |
+{% endfor %}
+{% if params | selectattr("choices") | list %}
+### Parameter Choices
+
+{% for p in params %}{% if p.choices %}
+- **{{ p.name }}**: {{ p.choices | join(", ") }}
+{% endif %}{% endfor %}
+{% endif %}
+
+## Usage
+
+Run this module using the `ansible` CLI (from `ansible-core`):
+
+{% if is_api_module %}
+```bash
+ansible localhost -m {{ module_name }} -a "<key=value arguments>" -c local --check --diff
+```
+
+### Quick Examples
+
+```bash
+# Dry-run first (always recommended for destructive operations)
+ansible localhost -m {{ module_name }} -a "{{ example_args }}" -c local --check --diff
+
+# Apply the change
+ansible localhost -m {{ module_name }} -a "{{ example_args }}" -c local --diff
+```
+{% else %}
+```bash
+ansible <host-pattern> -m {{ module_name }} -a "<key=value arguments>" -b --check --diff
+```
+
+### Quick Examples
+
+```bash
+# Dry-run first (always recommended for destructive operations)
+ansible webservers -m {{ module_name }} -a "{{ example_args }}" -b --check --diff
+
+# Apply the change
+ansible webservers -m {{ module_name }} -a "{{ example_args }}" -b --diff
+```
+{% endif %}
+
+{% if examples %}
+### Examples from Ansible Documentation
+
+```yaml
+{{ examples }}
+```
+{% endif %}
+
+## Key Flags
+
+| Flag | Purpose |
+|------|---------|
+{% if not is_api_module %}
+| `-b` | Run with sudo/become (required for most system changes) |
+{% endif %}
+| `--check` | Dry-run mode -- shows what **would** change without applying |
+| `--diff` | Shows detailed before/after differences |
+| `-i <path>` | Specify inventory file (see Inventory section below) |
+| `-l <pattern>` | Limit to specific hosts within a group |
+{% if is_api_module %}
+| `-c local` | Use local connection (no SSH) |
+{% endif %}
+
+## JSON Output
+
+To get structured JSON output for programmatic parsing:
+
+{% if is_api_module %}
+```bash
+ANSIBLE_STDOUT_CALLBACK=json ansible localhost -m {{ module_name }} -a "<args>" -c local
+```
+{% else %}
+```bash
+ANSIBLE_STDOUT_CALLBACK=json ansible <hosts> -m {{ module_name }} -a "<args>" -b
+```
+{% endif %}
+
+Or set `stdout_callback = json` in your `ansible.cfg` (AnsibleClaw projects include this by default).
+
+## Safety
+
+- **Always dry-run first**: Use `--check --diff` before applying destructive changes
+{% if is_api_module %}
+- **API credentials**: This module communicates with an external API. Keep tokens and URLs out of version control -- use environment variables or Ansible vault.
+{% else %}
+- **Become/sudo**: Most system-level modules require `-b`. Check the parameters above for guidance.
+{% endif %}
+- **Idempotency**: This module is idempotent -- running it multiple times with the same arguments produces the same result
+
+## Inventory
+
+When running from inside the AnsibleClaw project, `ansible.cfg` sets the default inventory automatically. When using this skill from another location:
+
+- Specify inventory explicitly: `-i /path/to/inventory.yml`
+- Set environment variable: `export ANSIBLE_INVENTORY=/path/to/inventory.yml`
+- Use Ansible's default: `/etc/ansible/hosts`
+- Target a single host directly: `ansible <hostname>, -m {{ module_name }} -a "..."` (note the trailing comma)
