@@ -51,6 +51,21 @@ Runtime requirement: `ansible-core` must be installed (for `ansible-doc`).
 claude mcp add ansible-knowledge -- ansible-knowledge-mcp
 ```
 
+### With VS Code / Cursor
+
+Add to `.vscode/mcp.json` in your workspace:
+
+```json
+{
+  "servers": {
+    "ansible-knowledge": {
+      "command": "ansible-knowledge-mcp",
+      "type": "stdio"
+    }
+  }
+}
+```
+
 ### With any MCP client
 
 The server runs over stdio by default:
