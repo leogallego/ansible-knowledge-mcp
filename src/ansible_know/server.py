@@ -414,6 +414,108 @@ async def generate_collection_skills(
         return {"error": _sanitize_error(str(exc))}
 
 
+# --- Resources (read-only data) ---
+
+
+@mcp.resource("skills://list", name="Available Skills", description="List all generated skill packages")
+def resource_skills_list() -> str:
+    from ansible_know.config import SKILLS_DIR
+    import json
+
+    skills = []
+    if SKILLS_DIR.exists():
+        for skill_dir in sorted(SKILLS_DIR.iterdir()):
+            skill_md = skill_dir / "SKILL.md"
+            if skill_md.exists():
+                skills.append(skill_dir.name)
+    return json.dumps(skills, indent=2)
+
+
+@mcp.resource(
+    "skills://{skill_name}",
+    name="Skill Content",
+    description="Read a generated skill's SKILL.md by FQCN",
+)
+def resource_skill_content(skill_name: str) -> str:
+    from ansible_know.config import SKILLS_DIR
+
+    try:
+        _validate_fqcn(skill_name)
+    except ValidationError as exc:
+        return str(exc)
+
+    skill_path = (SKILLS_DIR / skill_name / "SKILL.md").resolve()
+    try:
+        _validate_path_containment(skill_path, SKILLS_DIR)
+    except ValidationError as exc:
+        return str(exc)
+
+    if not skill_path.exists():
+        return f"Skill '{skill_name}' not found."
+    return _truncate_response(skill_path.read_text())
+
+
+@mcp.resource(
+    "docs://sources",
+    name="Documentation Sources",
+    description="List configured documentation manifest sources",
+)
+def resource_doc_sources() -> str:
+    from ansible_know.config import get_doc_sources
+    import json
+
+    sources = get_doc_sources()
+    return json.dumps(
+        {name: cfg["description"] for name, cfg in sources.items()},
+        indent=2,
+    )
+
+
+# --- Prompts (reusable templates) ---
+
+
+@mcp.prompt
+def review_playbook(playbook_yaml: str) -> str:
+    """Review an Ansible playbook against module documentation and best practices."""
+    return (
+        "Review the following Ansible playbook for correctness, best practices, "
+        "and potential issues. Check that modules are used with correct parameters, "
+        "FQCNs are used, and the playbook follows idempotency principles.\n\n"
+        "Use the search_modules and get_module_doc tools to verify module usage.\n\n"
+        f"```yaml\n{playbook_yaml}\n```"
+    )
+
+
+@mcp.prompt
+def explain_module(module_name: str) -> str:
+    """Get a detailed explanation of an Ansible module with usage examples."""
+    return (
+        f"Explain the Ansible module `{module_name}` in detail. "
+        "Use the get_module_doc tool to fetch its full documentation, then provide:\n\n"
+        "1. What the module does and when to use it\n"
+        "2. Required vs optional parameters with descriptions\n"
+        "3. A practical example playbook\n"
+        "4. Common pitfalls or gotchas"
+    )
+
+
+@mcp.prompt
+def generate_role(role_purpose: str, modules: str) -> str:
+    """Generate an Ansible role skeleton using specified modules."""
+    return (
+        f"Generate an Ansible role that: {role_purpose}\n\n"
+        f"Use the following modules: {modules}\n\n"
+        "Use get_module_doc for each module to get correct parameter names. "
+        "Follow these conventions:\n"
+        "- Use FQCNs for all modules\n"
+        "- Prefix all variables with the role name\n"
+        "- Put user-facing defaults in defaults/main.yml\n"
+        "- Include meta/argument_specs.yml for validation\n"
+        "- Ensure idempotency with changed_when on command/shell tasks\n"
+        "- Add a README.md with example playbooks"
+    )
+
+
 def main():
     """Entry point for the MCP server."""
     mcp.run()
