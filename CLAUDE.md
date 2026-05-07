@@ -17,7 +17,7 @@ Runtime requirement: `ansible-core` must be installed in the same environment (f
 ## Architecture
 
 ```
-src/ansible_knowledge/
+src/ansible_know/
 ├── server.py              # FastMCP server, 8 @tool functions (entrypoint)
 ├── parser.py              # ansible-doc wrapper — module discovery and metadata extraction
 ├── skills.py              # skill rendering + package writing (Jinja2)
@@ -59,10 +59,10 @@ All tests use `unittest.mock.patch` to mock `_run_ansible_doc`. No ansible-core 
 
 Development (from project root):
 ```bash
-claude mcp add ansible-knowledge -- uv run --directory . ansible-knowledge-mcp
+claude mcp add ansible-know -- uv run --directory . ansible-know-mcp
 ```
 
 Global (after pip install):
 ```bash
-claude mcp add ansible-knowledge -- ansible-knowledge-mcp
+claude mcp add ansible-know -- ansible-know-mcp
 ```

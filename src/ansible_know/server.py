@@ -40,8 +40,8 @@ async def search_modules(
     namespace: Annotated[str | None, "Optional collection namespace filter (e.g. 'community.docker')"] = None,
 ) -> dict[str, str]:
     """Find Ansible modules by keyword in name or description. Returns up to 50 matches as {fqcn: short_description}."""
-    from ansible_knowledge import parser
-    from ansible_knowledge.config import SEARCH_MODULES_LIMIT
+    from ansible_know import parser
+    from ansible_know.config import SEARCH_MODULES_LIMIT
 
     results = await _run_in_executor(parser.search_modules, keyword, namespace)
     if len(results) > SEARCH_MODULES_LIMIT:
@@ -58,7 +58,7 @@ async def get_module_doc(
     Returns: module_name, short_description, params (list with name/type/required/default/choices/description/aliases),
     examples (raw YAML), is_api_module.
     """
-    from ansible_knowledge import parser
+    from ansible_know import parser
 
     raw_doc = await _run_in_executor(parser.get_module_doc, module_name)
     metadata = parser.extract_module_metadata(raw_doc)
@@ -77,7 +77,7 @@ async def search_docs(
 
     Returns up to 20 matching entries with title, summary, topic, audience, lines, source, and raw URL.
     """
-    from ansible_knowledge import docs
+    from ansible_know import docs
 
     return await docs.search_docs(
         query=query, source=source, topic=topic, audience=audience, core_only=core_only,
@@ -93,7 +93,7 @@ async def get_collection_manifest(
     Returns cached MANIFEST.json if available, otherwise generates on-demand
     (metadata extraction only, no skill generation).
     """
-    from ansible_knowledge import parser, collection_manifest
+    from ansible_know import parser, collection_manifest
 
     cached = collection_manifest.load_cached_manifest(collection_namespace)
     if cached:
@@ -120,7 +120,7 @@ async def get_collection_manifest(
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def list_skills() -> list[dict[str, str]]:
     """List all available generated skills. Returns name, description, path for each."""
-    from ansible_knowledge.config import SKILLS_DIR
+    from ansible_know.config import SKILLS_DIR
 
     results = []
     if not SKILLS_DIR.exists():
@@ -149,7 +149,7 @@ async def get_skill(
     skill_name: Annotated[str, "Skill name (usually the module FQCN)"],
 ) -> str:
     """Read a specific skill's SKILL.md content by name."""
-    from ansible_knowledge.config import SKILLS_DIR
+    from ansible_know.config import SKILLS_DIR
 
     skill_path = SKILLS_DIR / skill_name / "SKILL.md"
     if not skill_path.exists():
@@ -168,8 +168,8 @@ async def generate_skill(
     Writes SKILL.md + scripts + playbook to disk.
     Returns the SKILL.md content inline so the agent can use it immediately.
     """
-    from ansible_knowledge import parser, skills
-    from ansible_knowledge.config import SKILLS_DIR
+    from ansible_know import parser, skills
+    from ansible_know.config import SKILLS_DIR
 
     if ctx:
         await ctx.report_progress(progress=0, total=100)
@@ -203,8 +203,8 @@ async def generate_collection_skills(
     Generates/updates the collection MANIFEST.json as a byproduct.
     Returns summary (succeeded/failed counts) + manifest content.
     """
-    from ansible_knowledge import parser, skills, collection_manifest
-    from ansible_knowledge.config import SKILLS_DIR
+    from ansible_know import parser, skills, collection_manifest
+    from ansible_know.config import SKILLS_DIR
     from pathlib import Path
 
     modules = await _run_in_executor(parser.search_modules, "", collection_namespace)

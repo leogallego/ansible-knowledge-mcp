@@ -1,10 +1,10 @@
-"""Tests for ansible_knowledge.parser."""
+"""Tests for ansible_know.parser."""
 
 from unittest.mock import patch
 
 import pytest
 
-from ansible_knowledge.parser import (
+from ansible_know.parser import (
     AnsibleDocError,
     extract_examples,
     extract_module_metadata,
@@ -19,44 +19,44 @@ from ansible_knowledge.parser import (
 
 class TestGetModuleDoc:
     def test_returns_parsed_json(self, sample_module_doc, sample_module_doc_json):
-        with patch("ansible_knowledge.parser._run_ansible_doc", return_value=sample_module_doc_json):
+        with patch("ansible_know.parser._run_ansible_doc", return_value=sample_module_doc_json):
             result = get_module_doc("ansible.builtin.package")
         assert result == sample_module_doc
 
     def test_raises_on_invalid_json(self):
-        with patch("ansible_knowledge.parser._run_ansible_doc", return_value="not json"):
+        with patch("ansible_know.parser._run_ansible_doc", return_value="not json"):
             with pytest.raises(AnsibleDocError, match="Failed to parse"):
                 get_module_doc("ansible.builtin.package")
 
 
 class TestListModules:
     def test_returns_all_modules(self, sample_module_list_json):
-        with patch("ansible_knowledge.parser._run_ansible_doc", return_value=sample_module_list_json) as mock:
+        with patch("ansible_know.parser._run_ansible_doc", return_value=sample_module_list_json) as mock:
             result = list_modules()
         assert len(result) == 4
         mock.assert_called_once_with("--list", "--json")
 
     def test_passes_namespace(self, sample_module_list_json):
-        with patch("ansible_knowledge.parser._run_ansible_doc", return_value=sample_module_list_json) as mock:
+        with patch("ansible_know.parser._run_ansible_doc", return_value=sample_module_list_json) as mock:
             list_modules(namespace="community.general")
         mock.assert_called_once_with("--list", "--json", "community.general")
 
 
 class TestSearchModules:
     def test_filters_by_keyword_in_name(self, sample_module_list_json):
-        with patch("ansible_knowledge.parser._run_ansible_doc", return_value=sample_module_list_json):
+        with patch("ansible_know.parser._run_ansible_doc", return_value=sample_module_list_json):
             result = search_modules("redis")
         assert "community.general.redis" in result
         assert len(result) == 1
 
     def test_filters_by_keyword_in_description(self, sample_module_list_json):
-        with patch("ansible_knowledge.parser._run_ansible_doc", return_value=sample_module_list_json):
+        with patch("ansible_know.parser._run_ansible_doc", return_value=sample_module_list_json):
             result = search_modules("apt")
         assert "ansible.builtin.apt" in result
         assert "ansible.builtin.package" not in result
 
     def test_case_insensitive(self, sample_module_list_json):
-        with patch("ansible_knowledge.parser._run_ansible_doc", return_value=sample_module_list_json):
+        with patch("ansible_know.parser._run_ansible_doc", return_value=sample_module_list_json):
             result = search_modules("REDIS")
         assert "community.general.redis" in result
 

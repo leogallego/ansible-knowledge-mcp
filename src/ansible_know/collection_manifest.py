@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ansible_knowledge.config import SKILLS_DIR
+from ansible_know.config import SKILLS_DIR
 
 
 def _derive_tags(fqcn: str, params: list[dict[str, Any]]) -> list[str]:

@@ -11,7 +11,7 @@ import stat
 from pathlib import Path
 from typing import Any
 
-from ansible_knowledge.config import TEMPLATE_DIR
+from ansible_know.config import TEMPLATE_DIR
 
 
 def _get_template_env():

@@ -1,11 +1,11 @@
-"""Tests for ansible_knowledge.docs."""
+"""Tests for ansible_know.docs."""
 
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from ansible_knowledge.docs import clear_cache, search_docs
+from ansible_know.docs import clear_cache, search_docs
 
 
 MOCK_MANIFEST = [
@@ -59,7 +59,7 @@ def mock_httpx():
     mock_client.get.return_value = _mock_httpx_response()
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
     mock_client.__aexit__ = AsyncMock(return_value=False)
-    with patch("ansible_knowledge.docs.httpx.AsyncClient", return_value=mock_client):
+    with patch("ansible_know.docs.httpx.AsyncClient", return_value=mock_client):
         yield mock_client
 
 

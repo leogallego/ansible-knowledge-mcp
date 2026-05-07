@@ -1,9 +1,9 @@
-"""Tests for ansible_knowledge.skills."""
+"""Tests for ansible_know.skills."""
 
 import pytest
 
-from ansible_knowledge.parser import extract_module_metadata
-from ansible_knowledge.skills import (
+from ansible_know.parser import extract_module_metadata
+from ansible_know.skills import (
     _build_example_args,
     _extract_example_values,
     _module_to_skill_name,

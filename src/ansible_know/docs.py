@@ -10,7 +10,7 @@ from typing import Any
 
 import httpx
 
-from ansible_knowledge.config import SEARCH_DOCS_LIMIT, get_doc_sources
+from ansible_know.config import SEARCH_DOCS_LIMIT, get_doc_sources
 
 
 _manifest_cache: dict[str, list[dict[str, Any]]] = {}
@@ -26,10 +26,13 @@ async def _fetch_manifest(source_name: str, url: str) -> list[dict[str, Any]]:
         resp.raise_for_status()
         data = resp.json()
 
-    entries = data if isinstance(data, list) else data.get("documents", data.get("entries", []))
+    base_url = data.get("base_url", "") if isinstance(data, dict) else ""
+    entries = data if isinstance(data, list) else data.get("files", data.get("documents", data.get("entries", [])))
 
     for entry in entries:
         entry["_source"] = source_name
+        if "url" not in entry and "path" in entry and base_url:
+            entry["url"] = f"{base_url.rstrip('/')}/{entry['path'].lstrip('/')}"
 
     _manifest_cache[source_name] = entries
     return entries
@@ -70,33 +73,30 @@ async def search_docs(
         for entry in entries:
             if core_only and not entry.get("core", False):
                 continue
-            if topic:
-                entry_topics = entry.get("topics", [])
-                if isinstance(entry_topics, str):
-                    entry_topics = [entry_topics]
-                if topic.lower() not in [t.lower() for t in entry_topics]:
-                    continue
-            if audience:
-                entry_audience = entry.get("audience", [])
-                if isinstance(entry_audience, str):
-                    entry_audience = [entry_audience]
-                if audience.lower() not in [a.lower() for a in entry_audience]:
-                    continue
+
+            entry_topics = entry.get("topics", entry.get("topic", []))
+            if isinstance(entry_topics, str):
+                entry_topics = [entry_topics]
+            entry_audience = entry.get("audience", [])
+            if isinstance(entry_audience, str):
+                entry_audience = [entry_audience]
+
+            if topic and topic.lower() not in [t.lower() for t in entry_topics]:
+                continue
+            if audience and audience.lower() not in [a.lower() for a in entry_audience]:
+                continue
 
             title = entry.get("title", "").lower()
             summary = entry.get("summary", "").lower()
-            topics_str = " ".join(
-                t.lower() for t in entry.get("topics", [])
-                if isinstance(t, str)
-            )
+            topics_str = " ".join(t.lower() for t in entry_topics)
             searchable = f"{title} {summary} {topics_str}"
 
             if query_lower in searchable:
                 result = {
                     "title": entry.get("title", ""),
                     "summary": entry.get("summary", ""),
-                    "topic": entry.get("topics", []),
-                    "audience": entry.get("audience", []),
+                    "topic": entry_topics,
+                    "audience": entry_audience,
                     "lines": entry.get("lines", 0),
                     "source": src_name,
                     "url": entry.get("url", ""),

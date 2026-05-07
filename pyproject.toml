@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "ansible-knowledge-mcp"
+name = "ansible-know-mcp"
 version = "0.1.0"
 description = "Ansible Knowledge MCP Server — module discovery, documentation, and skill generation for AI agents"
 requires-python = ">=3.10"
@@ -29,13 +29,13 @@ dependencies = [
 ]
 
 [project.scripts]
-ansible-knowledge-mcp = "ansible_knowledge.server:main"
+ansible-know-mcp = "ansible_know.server:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "pytest-asyncio>=0.23"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/ansible_knowledge"]
+packages = ["src/ansible_know"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

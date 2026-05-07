@@ -38,7 +38,7 @@ Together with [Ansible Devtools MCP](https://github.com/ansible/ansible-dev-tool
 ## Installation
 
 ```bash
-pip install ansible-knowledge-mcp
+pip install ansible-know-mcp
 ```
 
 Runtime requirement: `ansible-core` must be installed (for `ansible-doc`).
@@ -48,7 +48,7 @@ Runtime requirement: `ansible-core` must be installed (for `ansible-doc`).
 ### With Claude Code
 
 ```bash
-claude mcp add ansible-knowledge -- ansible-knowledge-mcp
+claude mcp add ansible-know -- ansible-know-mcp
 ```
 
 ### With VS Code / Cursor
@@ -58,8 +58,8 @@ Add to `.vscode/mcp.json` in your workspace:
 ```json
 {
   "servers": {
-    "ansible-knowledge": {
-      "command": "ansible-knowledge-mcp",
+    "ansible-know": {
+      "command": "ansible-know-mcp",
       "type": "stdio"
     }
   }
@@ -71,7 +71,7 @@ Add to `.vscode/mcp.json` in your workspace:
 The server runs over stdio by default:
 
 ```bash
-ansible-knowledge-mcp
+ansible-know-mcp
 ```
 
 ### Full stack configuration
@@ -79,7 +79,7 @@ ansible-knowledge-mcp
 ```json
 {
   "mcpServers": {
-    "ansible-knowledge": { "command": "ansible-knowledge-mcp" },
+    "ansible-know": { "command": "ansible-know-mcp" },
     "ansible-devtools":  { "command": "ade", "args": ["mcp"] },
     "aap":               { "command": "aap-mcp-server" }
   }
@@ -110,7 +110,7 @@ ansible-knowledge-mcp
 
 ```bash
 git clone <repo-url>
-cd ansible-knowledge-mcp
+cd ansible-know-mcp
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 pytest

@@ -1,15 +1,15 @@
-"""Tests for ansible_knowledge.collection_manifest."""
+"""Tests for ansible_know.collection_manifest."""
 
 import json
 
 import pytest
 
-from ansible_knowledge.collection_manifest import (
+from ansible_know.collection_manifest import (
     _derive_tags,
     generate_manifest,
     load_cached_manifest,
 )
-from ansible_knowledge.parser import extract_module_metadata
+from ansible_know.parser import extract_module_metadata
 
 
 class TestDeriveTags:
