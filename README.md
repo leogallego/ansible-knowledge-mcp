@@ -1,16 +1,18 @@
-# Ansible Knowledge MCP Server
+# Ansible Know MCP Server
 
 Module discovery, documentation search, and skill generation for AI agents via the Model Context Protocol.
 
 ## What It Does
 
-The Ansible Knowledge MCP Server is the foundational "learn" layer for AI agents working with Ansible. It provides:
+Ansible Know is the foundational "learn" layer for AI agents working with Ansible. It provides:
 
 - **Module discovery** — search and explore Ansible modules across all installed collections
 - **Module documentation** — get structured parameter specs, examples, and metadata
 - **Documentation search** — find conceptual guides from Ansible's AI-friendly docs
 - **Skill generation** — create ready-to-use skill packages that teach agents how to use specific modules
 - **Collection manifests** — get collection-level overviews with per-module summaries
+- **Resources** — browse skills and doc sources as MCP resources
+- **Prompts** — pre-built templates for playbook review, module explanation, and role generation
 
 Together with [Ansible Devtools MCP](https://github.com/ansible/ansible-dev-tools) (build) and [AAP MCP](https://github.com/ansible/aap-mcp-server) (deploy), this enables the full autonomous cycle: **learn -> build -> deploy**.
 
@@ -18,7 +20,7 @@ Together with [Ansible Devtools MCP](https://github.com/ansible/ansible-dev-tool
  Agent's MCP servers:
 
  +-----------------------+  +-------------------+  +---------------+
- | Ansible Knowledge     |  | Ansible Devtools  |  |   AAP MCP     |
+ | Ansible Know          |  | Ansible Devtools  |  |   AAP MCP     |
  | (this project)        |  |                   |  |               |
  |                       |  |                   |  |               |
  | search_modules        |  | ansible_lint      |  | controller.*  |
@@ -37,18 +39,32 @@ Together with [Ansible Devtools MCP](https://github.com/ansible/ansible-dev-tool
 
 ## Installation
 
+Using `uvx` (recommended):
+
+```bash
+uvx ansible-know-mcp
+```
+
+Using `pip`:
+
 ```bash
 pip install ansible-know-mcp
 ```
 
-Runtime requirement: `ansible-core` must be installed (for `ansible-doc`).
+Runtime requirement: `ansible-core` must be installed in the same environment (for `ansible-doc`).
 
 ## Usage
 
 ### With Claude Code
 
 ```bash
-claude mcp add ansible-know -- ansible-know-mcp
+claude mcp add ansible-know -- uvx ansible-know-mcp
+```
+
+To make it available in all projects:
+
+```bash
+claude mcp add --scope user ansible-know -- uvx ansible-know-mcp
 ```
 
 ### With VS Code / Cursor
@@ -59,7 +75,8 @@ Add to `.vscode/mcp.json` in your workspace:
 {
   "servers": {
     "ansible-know": {
-      "command": "ansible-know-mcp",
+      "command": "uvx",
+      "args": ["ansible-know-mcp"],
       "type": "stdio"
     }
   }
@@ -71,7 +88,7 @@ Add to `.vscode/mcp.json` in your workspace:
 The server runs over stdio by default:
 
 ```bash
-ansible-know-mcp
+uvx ansible-know-mcp
 ```
 
 ### Full stack configuration
@@ -79,9 +96,9 @@ ansible-know-mcp
 ```json
 {
   "mcpServers": {
-    "ansible-know": { "command": "ansible-know-mcp" },
-    "ansible-devtools":  { "command": "ade", "args": ["mcp"] },
-    "aap":               { "command": "aap-mcp-server" }
+    "ansible-know":     { "command": "uvx", "args": ["ansible-know-mcp"] },
+    "ansible-devtools": { "command": "ade", "args": ["mcp"] },
+    "aap":              { "command": "aap-mcp-server" }
   }
 }
 ```
@@ -106,13 +123,29 @@ ansible-know-mcp
 | `generate_skill(module_name, install_to?)` | Generate a skill package for one module. Returns SKILL.md inline. |
 | `generate_collection_skills(collection_namespace, install_to?)` | Batch generate skills for an entire collection. |
 
+## Resources
+
+| URI | Description |
+|-----|-------------|
+| `skills://list` | List all generated skill packages |
+| `skills://{skill_name}` | Read a skill's SKILL.md content by FQCN |
+| `docs://sources` | List configured documentation manifest sources |
+
+## Prompts
+
+| Prompt | Description |
+|--------|-------------|
+| `review_playbook(playbook_yaml)` | Review a playbook against module docs and best practices |
+| `explain_module(module_name)` | Get a detailed module explanation with usage examples |
+| `generate_role(role_purpose, modules)` | Generate a role skeleton using specified modules |
+
 ## Development
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/leogallego/ansible-know-mcp.git
 cd ansible-know-mcp
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+uv venv && source .venv/bin/activate
+uv pip install -e ".[dev]"
 pytest
 ```
 

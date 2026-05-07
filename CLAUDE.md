@@ -2,7 +2,7 @@
 
 ## Project
 
-Ansible Knowledge MCP Server — module discovery, documentation search, and skill generation for AI agents via the Model Context Protocol.
+Ansible Know MCP Server — module discovery, documentation search, and skill generation for AI agents via the Model Context Protocol.
 
 ## Quick Start
 
@@ -18,7 +18,7 @@ Runtime requirement: `ansible-core` must be installed in the same environment (f
 
 ```
 src/ansible_know/
-├── server.py              # FastMCP server, 8 @tool functions (entrypoint)
+├── server.py              # FastMCP server: 8 tools, 3 resources, 3 prompts (entrypoint)
 ├── parser.py              # ansible-doc wrapper — module discovery and metadata extraction
 ├── skills.py              # skill rendering + package writing (Jinja2)
 ├── config.py              # paths, constants, doc source registry
@@ -40,10 +40,28 @@ src/ansible_know/
 | `generate_skill` | write | Generate a skill package for one module |
 | `generate_collection_skills` | write | Batch generate skills for a collection |
 
+## MCP Resources
+
+| URI | Description |
+|-----|-------------|
+| `skills://list` | List all generated skill packages |
+| `skills://{skill_name}` | Read a skill's SKILL.md by FQCN |
+| `docs://sources` | List configured doc manifest sources |
+
+## MCP Prompts
+
+| Prompt | Description |
+|--------|-------------|
+| `review_playbook` | Review a playbook against module docs |
+| `explain_module` | Detailed module explanation with examples |
+| `generate_role` | Generate a role skeleton using specified modules |
+
 ## Key Patterns
 
 - All `parser.py` functions call `subprocess.run()`. The server wraps them via `asyncio.run_in_executor()`.
 - Tool functions use lazy imports for `parser` and `skills` to avoid importing ansible-core at startup.
+- All inputs are validated (FQCN format, path traversal, length limits) before processing.
+- Error messages are sanitized to strip filesystem paths.
 - `docs.py` fetches manifests via httpx, caches per-source in a dict.
 - Tests mock `_run_ansible_doc` — no real `ansible-doc` needed.
 
@@ -62,7 +80,7 @@ Development (from project root):
 claude mcp add ansible-know -- uv run --directory . ansible-know-mcp
 ```
 
-Global (after pip install):
+Global (after pip install or via uvx):
 ```bash
-claude mcp add ansible-know -- ansible-know-mcp
+claude mcp add --scope user ansible-know -- uvx ansible-know-mcp
 ```
