@@ -21,12 +21,20 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: System :: Systems Administration",
 ]
+authors = [
+    { name = "Leonardo Gallego", email = "leo.pypi@gallego.red" },
+]
 dependencies = [
     "fastmcp>=3.0",
     "httpx>=0.27",
     "jinja2>=3.1",
     "pyyaml>=6.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/leogallego/ansible-know-mcp"
+Repository = "https://github.com/leogallego/ansible-know-mcp"
+Issues = "https://github.com/leogallego/ansible-know-mcp/issues"
 
 [project.scripts]
 ansible-know-mcp = "ansible_know.server:main"

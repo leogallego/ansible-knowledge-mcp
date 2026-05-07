@@ -1,3 +1,3 @@
-"""Ansible Knowledge MCP Server."""
+"""Ansible Know MCP Server."""
 
 __version__ = "0.1.0"
