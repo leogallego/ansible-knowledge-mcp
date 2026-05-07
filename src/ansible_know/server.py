@@ -1,4 +1,4 @@
-"""Ansible Knowledge MCP Server.
+"""Ansible Know MCP Server.
 
 Provides 8 tools for module discovery, documentation search,
 and skill generation via the Model Context Protocol.
@@ -8,14 +8,28 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import re
 from functools import partial
+from pathlib import Path
 from typing import Annotated, Any
 
 from fastmcp import FastMCP, Context
 from mcp.types import ToolAnnotations
 
+logger = logging.getLogger("ansible_know")
+
+MAX_RESPONSE_SIZE = 500_000  # 500KB
+MAX_KEYWORD_LENGTH = 200
+MAX_QUERY_LENGTH = 500
+
+_FQCN_RE = re.compile(r"^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+$")
+_NAMESPACE_RE = re.compile(r"^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+$")
+_SENSITIVE_PREFIXES = ("/etc", "/usr", "/bin", "/sbin", "/boot", "/proc", "/sys", "/dev")
+_PATH_RE = re.compile(r"/(?:home|tmp|usr|etc|var|opt)/\S+")
+
 mcp = FastMCP(
-    name="Ansible Knowledge",
+    name="Ansible Know",
     instructions=(
         "Ansible module discovery, documentation, and skill generation. "
         "Use search_modules to find modules, get_module_doc for details, "
@@ -23,6 +37,67 @@ mcp = FastMCP(
         "ready-to-use skill packages."
     ),
 )
+
+
+class ValidationError(Exception):
+    """Raised when tool input fails validation."""
+
+
+def _validate_fqcn(name: str) -> None:
+    if not name or not _FQCN_RE.match(name):
+        raise ValidationError(
+            f"Invalid module name: expected format 'namespace.collection.module' "
+            f"with alphanumeric/underscore segments."
+        )
+
+
+def _validate_namespace(ns: str) -> None:
+    if not ns or not _NAMESPACE_RE.match(ns):
+        raise ValidationError(
+            f"Invalid collection namespace: expected format 'namespace.collection' "
+            f"with alphanumeric/underscore segments."
+        )
+
+
+def _validate_keyword(keyword: str) -> None:
+    if len(keyword) > MAX_KEYWORD_LENGTH:
+        raise ValidationError(
+            f"Keyword too long: {len(keyword)} chars (max {MAX_KEYWORD_LENGTH})."
+        )
+
+
+def _validate_query(query: str) -> None:
+    if len(query) > MAX_QUERY_LENGTH:
+        raise ValidationError(
+            f"Query too long: {len(query)} chars (max {MAX_QUERY_LENGTH})."
+        )
+
+
+def _validate_install_path(path_str: str) -> Path:
+    resolved = Path(path_str).resolve()
+    for prefix in _SENSITIVE_PREFIXES:
+        if str(resolved).startswith(prefix):
+            raise ValidationError(
+                f"Install path not allowed: cannot write to system directories."
+            )
+    return resolved
+
+
+def _validate_path_containment(child: Path, parent: Path) -> None:
+    try:
+        child.resolve().relative_to(parent.resolve())
+    except ValueError:
+        raise ValidationError("Path escapes the allowed directory.")
+
+
+def _sanitize_error(msg: str) -> str:
+    return _PATH_RE.sub("<path>", str(msg))
+
+
+def _truncate_response(text: str) -> str:
+    if len(text) > MAX_RESPONSE_SIZE:
+        return text[:MAX_RESPONSE_SIZE] + "\n\n[Truncated — response exceeded size limit]"
+    return text
 
 
 def _run_in_executor(func, *args, **kwargs):
@@ -40,13 +115,25 @@ async def search_modules(
     namespace: Annotated[str | None, "Optional collection namespace filter (e.g. 'community.docker')"] = None,
 ) -> dict[str, str]:
     """Find Ansible modules by keyword in name or description. Returns up to 50 matches as {fqcn: short_description}."""
-    from ansible_know import parser
-    from ansible_know.config import SEARCH_MODULES_LIMIT
+    logger.info("search_modules keyword=%r namespace=%r", keyword, namespace)
+    try:
+        _validate_keyword(keyword)
+        if namespace:
+            _validate_namespace(namespace)
+    except ValidationError as exc:
+        return {"error": str(exc)}
 
-    results = await _run_in_executor(parser.search_modules, keyword, namespace)
-    if len(results) > SEARCH_MODULES_LIMIT:
-        results = dict(list(results.items())[:SEARCH_MODULES_LIMIT])
-    return results
+    try:
+        from ansible_know import parser
+        from ansible_know.config import SEARCH_MODULES_LIMIT
+
+        results = await _run_in_executor(parser.search_modules, keyword, namespace)
+        if len(results) > SEARCH_MODULES_LIMIT:
+            results = dict(list(results.items())[:SEARCH_MODULES_LIMIT])
+        return results
+    except Exception as exc:
+        logger.warning("search_modules failed: %s", exc)
+        return {"error": _sanitize_error(str(exc))}
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -58,11 +145,21 @@ async def get_module_doc(
     Returns: module_name, short_description, params (list with name/type/required/default/choices/description/aliases),
     examples (raw YAML), is_api_module.
     """
-    from ansible_know import parser
+    logger.info("get_module_doc module=%r", module_name)
+    try:
+        _validate_fqcn(module_name)
+    except ValidationError as exc:
+        return {"error": str(exc)}
 
-    raw_doc = await _run_in_executor(parser.get_module_doc, module_name)
-    metadata = parser.extract_module_metadata(raw_doc)
-    return metadata
+    try:
+        from ansible_know import parser
+
+        raw_doc = await _run_in_executor(parser.get_module_doc, module_name)
+        metadata = parser.extract_module_metadata(raw_doc)
+        return metadata
+    except Exception as exc:
+        logger.warning("get_module_doc failed: %s", exc)
+        return {"error": _sanitize_error(str(exc))}
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -77,11 +174,21 @@ async def search_docs(
 
     Returns up to 20 matching entries with title, summary, topic, audience, lines, source, and raw URL.
     """
-    from ansible_know import docs
+    logger.info("search_docs query=%r", query)
+    try:
+        _validate_query(query)
+    except ValidationError as exc:
+        return [{"error": str(exc)}]
 
-    return await docs.search_docs(
-        query=query, source=source, topic=topic, audience=audience, core_only=core_only,
-    )
+    try:
+        from ansible_know import docs
+
+        return await docs.search_docs(
+            query=query, source=source, topic=topic, audience=audience, core_only=core_only,
+        )
+    except Exception as exc:
+        logger.warning("search_docs failed: %s", exc)
+        return [{"error": _sanitize_error(str(exc))}]
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -93,25 +200,37 @@ async def get_collection_manifest(
     Returns cached MANIFEST.json if available, otherwise generates on-demand
     (metadata extraction only, no skill generation).
     """
-    from ansible_know import parser, collection_manifest
+    logger.info("get_collection_manifest namespace=%r", collection_namespace)
+    try:
+        _validate_namespace(collection_namespace)
+    except ValidationError as exc:
+        return {"error": str(exc)}
 
-    cached = collection_manifest.load_cached_manifest(collection_namespace)
-    if cached:
-        return cached
+    try:
+        from ansible_know import parser, collection_manifest
 
-    modules = await _run_in_executor(parser.search_modules, "", collection_namespace)
-    if not modules:
-        return {"error": f"No modules found in collection '{collection_namespace}'"}
+        cached = collection_manifest.load_cached_manifest(collection_namespace)
+        if cached:
+            return cached
 
-    metadata_list = []
-    for module_name in sorted(modules):
-        try:
-            raw_doc = await _run_in_executor(parser.get_module_doc, module_name)
-            metadata_list.append(parser.extract_module_metadata(raw_doc))
-        except parser.AnsibleDocError:
-            continue
+        modules = await _run_in_executor(parser.search_modules, "", collection_namespace)
+        if not modules:
+            return {"error": f"No modules found in collection '{collection_namespace}'"}
 
-    return collection_manifest.generate_manifest(collection_namespace, metadata_list)
+        metadata_list = []
+        for module_name in sorted(modules):
+            try:
+                raw_doc = await _run_in_executor(parser.get_module_doc, module_name)
+                metadata_list.append(parser.extract_module_metadata(raw_doc))
+            except parser.AnsibleDocError:
+                continue
+
+        return collection_manifest.generate_manifest(collection_namespace, metadata_list)
+    except ValidationError:
+        raise
+    except Exception as exc:
+        logger.warning("get_collection_manifest failed: %s", exc)
+        return {"error": _sanitize_error(str(exc))}
 
 
 # --- Skill management tools ---
@@ -120,28 +239,33 @@ async def get_collection_manifest(
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def list_skills() -> list[dict[str, str]]:
     """List all available generated skills. Returns name, description, path for each."""
-    from ansible_know.config import SKILLS_DIR
+    logger.info("list_skills")
+    try:
+        from ansible_know.config import SKILLS_DIR
 
-    results = []
-    if not SKILLS_DIR.exists():
+        results = []
+        if not SKILLS_DIR.exists():
+            return results
+
+        for skill_dir in sorted(SKILLS_DIR.iterdir()):
+            skill_md = skill_dir / "SKILL.md"
+            if skill_md.exists():
+                content = skill_md.read_text()
+                description = ""
+                for line in content.splitlines():
+                    if line.startswith("description:"):
+                        description = line.partition(":")[2].strip().strip(">-").strip()
+                        break
+                results.append({
+                    "name": skill_dir.name,
+                    "description": description,
+                    "path": str(skill_dir),
+                })
+
         return results
-
-    for skill_dir in sorted(SKILLS_DIR.iterdir()):
-        skill_md = skill_dir / "SKILL.md"
-        if skill_md.exists():
-            content = skill_md.read_text()
-            description = ""
-            for line in content.splitlines():
-                if line.startswith("description:"):
-                    description = line.partition(":")[2].strip().strip(">-").strip()
-                    break
-            results.append({
-                "name": skill_dir.name,
-                "description": description,
-                "path": str(skill_dir),
-            })
-
-    return results
+    except Exception as exc:
+        logger.warning("list_skills failed: %s", exc)
+        return [{"error": _sanitize_error(str(exc))}]
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -149,12 +273,25 @@ async def get_skill(
     skill_name: Annotated[str, "Skill name (usually the module FQCN)"],
 ) -> str:
     """Read a specific skill's SKILL.md content by name."""
-    from ansible_know.config import SKILLS_DIR
+    logger.info("get_skill name=%r", skill_name)
+    try:
+        _validate_fqcn(skill_name)
+    except ValidationError as exc:
+        return str(exc)
 
-    skill_path = SKILLS_DIR / skill_name / "SKILL.md"
-    if not skill_path.exists():
-        return f"Skill '{skill_name}' not found."
-    return skill_path.read_text()
+    try:
+        from ansible_know.config import SKILLS_DIR
+
+        skill_path = (SKILLS_DIR / skill_name / "SKILL.md").resolve()
+        _validate_path_containment(skill_path, SKILLS_DIR)
+        if not skill_path.exists():
+            return f"Skill '{skill_name}' not found."
+        return _truncate_response(skill_path.read_text())
+    except ValidationError as exc:
+        return str(exc)
+    except Exception as exc:
+        logger.warning("get_skill failed: %s", exc)
+        return _sanitize_error(str(exc))
 
 
 @mcp.tool
@@ -168,28 +305,43 @@ async def generate_skill(
     Writes SKILL.md + scripts + playbook to disk.
     Returns the SKILL.md content inline so the agent can use it immediately.
     """
-    from ansible_know import parser, skills
-    from ansible_know.config import SKILLS_DIR
+    logger.info("generate_skill module=%r install_to=%r", module_name, install_to)
+    try:
+        _validate_fqcn(module_name)
+        if install_to:
+            _validate_install_path(install_to)
+    except ValidationError as exc:
+        return str(exc)
 
-    if ctx:
-        await ctx.report_progress(progress=0, total=100)
+    try:
+        from ansible_know import parser, skills
+        from ansible_know.config import SKILLS_DIR
 
-    raw_doc = await _run_in_executor(parser.get_module_doc, module_name)
-    metadata = parser.extract_module_metadata(raw_doc)
+        if ctx:
+            await ctx.report_progress(progress=0, total=100)
 
-    if ctx:
-        await ctx.report_progress(progress=50, total=100)
+        raw_doc = await _run_in_executor(parser.get_module_doc, module_name)
+        metadata = parser.extract_module_metadata(raw_doc)
 
-    skill_name = skills._module_to_skill_name(metadata["module_name"])
-    from pathlib import Path
-    output_dir = Path(install_to) / skill_name if install_to else SKILLS_DIR / skill_name
+        if ctx:
+            await ctx.report_progress(progress=50, total=100)
 
-    await _run_in_executor(skills.write_skill_package, output_dir, metadata)
+        skill_name = skills._module_to_skill_name(metadata["module_name"])
+        base_dir = _validate_install_path(install_to) if install_to else SKILLS_DIR
+        output_dir = base_dir / skill_name
 
-    if ctx:
-        await ctx.report_progress(progress=100, total=100)
+        await _run_in_executor(skills.write_skill_package, output_dir, metadata)
+        logger.info("generate_skill wrote to %s", output_dir)
 
-    return skills.render_skill(metadata)
+        if ctx:
+            await ctx.report_progress(progress=100, total=100)
+
+        return _truncate_response(skills.render_skill(metadata))
+    except ValidationError as exc:
+        return str(exc)
+    except Exception as exc:
+        logger.warning("generate_skill failed: %s", exc)
+        return _sanitize_error(str(exc))
 
 
 @mcp.tool
@@ -203,49 +355,63 @@ async def generate_collection_skills(
     Generates/updates the collection MANIFEST.json as a byproduct.
     Returns summary (succeeded/failed counts) + manifest content.
     """
-    from ansible_know import parser, skills, collection_manifest
-    from ansible_know.config import SKILLS_DIR
-    from pathlib import Path
+    logger.info("generate_collection_skills namespace=%r install_to=%r", collection_namespace, install_to)
+    try:
+        _validate_namespace(collection_namespace)
+        if install_to:
+            _validate_install_path(install_to)
+    except ValidationError as exc:
+        return {"error": str(exc)}
 
-    modules = await _run_in_executor(parser.search_modules, "", collection_namespace)
-    if not modules:
-        return {"error": f"No modules found in collection '{collection_namespace}'"}
+    try:
+        from ansible_know import parser, skills, collection_manifest
+        from ansible_know.config import SKILLS_DIR
 
-    total = len(modules)
-    succeeded = 0
-    failed = 0
-    metadata_list = []
+        modules = await _run_in_executor(parser.search_modules, "", collection_namespace)
+        if not modules:
+            return {"error": f"No modules found in collection '{collection_namespace}'"}
 
-    base_dir = Path(install_to) if install_to else SKILLS_DIR
+        total = len(modules)
+        succeeded = 0
+        failed = 0
+        metadata_list = []
 
-    for i, module_name in enumerate(sorted(modules)):
+        base_dir = _validate_install_path(install_to) if install_to else SKILLS_DIR
+
+        for i, module_name in enumerate(sorted(modules)):
+            if ctx:
+                await ctx.report_progress(progress=i, total=total)
+            try:
+                raw_doc = await _run_in_executor(parser.get_module_doc, module_name)
+                metadata = parser.extract_module_metadata(raw_doc)
+                metadata_list.append(metadata)
+
+                skill_name = skills._module_to_skill_name(metadata["module_name"])
+                output_dir = base_dir / skill_name
+                await _run_in_executor(skills.write_skill_package, output_dir, metadata)
+                succeeded += 1
+            except Exception:
+                failed += 1
+
+        manifest = collection_manifest.generate_manifest(
+            collection_namespace, metadata_list, skills_dir=base_dir,
+        )
+
         if ctx:
-            await ctx.report_progress(progress=i, total=total)
-        try:
-            raw_doc = await _run_in_executor(parser.get_module_doc, module_name)
-            metadata = parser.extract_module_metadata(raw_doc)
-            metadata_list.append(metadata)
+            await ctx.report_progress(progress=total, total=total)
 
-            skill_name = skills._module_to_skill_name(metadata["module_name"])
-            output_dir = base_dir / skill_name
-            await _run_in_executor(skills.write_skill_package, output_dir, metadata)
-            succeeded += 1
-        except Exception:
-            failed += 1
-
-    manifest = collection_manifest.generate_manifest(
-        collection_namespace, metadata_list, skills_dir=base_dir,
-    )
-
-    if ctx:
-        await ctx.report_progress(progress=total, total=total)
-
-    return {
-        "succeeded": succeeded,
-        "failed": failed,
-        "total": total,
-        "manifest": manifest,
-    }
+        logger.info("generate_collection_skills completed: %d/%d succeeded", succeeded, total)
+        return {
+            "succeeded": succeeded,
+            "failed": failed,
+            "total": total,
+            "manifest": manifest,
+        }
+    except ValidationError:
+        raise
+    except Exception as exc:
+        logger.warning("generate_collection_skills failed: %s", exc)
+        return {"error": _sanitize_error(str(exc))}
 
 
 def main():

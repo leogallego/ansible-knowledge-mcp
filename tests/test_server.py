@@ -106,7 +106,7 @@ class TestGetSkillTool:
     async def test_returns_not_found(self, tmp_path, monkeypatch):
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
         from ansible_know.server import get_skill
-        result = await get_skill("nonexistent")
+        result = await get_skill("ansible.builtin.nonexistent")
         assert "not found" in result.lower()
 
 
@@ -136,3 +136,147 @@ class TestGenerateCollectionSkillsTool:
         result = await generate_collection_skills("ansible.builtin", install_to=str(tmp_path))
         assert result["total"] == 4
         assert result["succeeded"] + result["failed"] == 4
+
+
+class TestFQCNValidation:
+    @pytest.mark.asyncio
+    async def test_rejects_path_traversal(self):
+        from ansible_know.server import get_module_doc
+        result = await get_module_doc("../../etc/passwd")
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_rejects_shell_metacharacters(self):
+        from ansible_know.server import get_module_doc
+        result = await get_module_doc("; rm -rf /")
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_rejects_empty_string(self):
+        from ansible_know.server import get_module_doc
+        result = await get_module_doc("")
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_rejects_single_segment(self):
+        from ansible_know.server import get_module_doc
+        result = await get_module_doc("copy")
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_rejects_two_segments(self):
+        from ansible_know.server import get_module_doc
+        result = await get_module_doc("ansible.builtin")
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_accepts_valid_fqcn(self, mock_ansible_doc):
+        mock_ansible_doc.return_value = json.dumps(SAMPLE_MODULE_DOC)
+        from ansible_know.server import get_module_doc
+        result = await get_module_doc("ansible.builtin.package")
+        assert "error" not in result
+        assert result["module_name"] == "ansible.builtin.package"
+
+    @pytest.mark.asyncio
+    async def test_rejects_dashes_in_fqcn(self):
+        from ansible_know.server import get_module_doc
+        result = await get_module_doc("my-namespace.my-collection.my-module")
+        assert "error" in result
+
+
+class TestNamespaceValidation:
+    @pytest.mark.asyncio
+    async def test_rejects_invalid_namespace(self):
+        from ansible_know.server import get_collection_manifest
+        result = await get_collection_manifest("../etc")
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_rejects_three_segments(self):
+        from ansible_know.server import get_collection_manifest
+        result = await get_collection_manifest("a.b.c")
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_accepts_valid_namespace(self, mock_ansible_doc):
+        mock_ansible_doc.return_value = json.dumps({})
+        from ansible_know.server import get_collection_manifest
+        result = await get_collection_manifest("ansible.builtin")
+        assert "error" in result  # empty collection, but validation passed
+
+
+class TestKeywordValidation:
+    @pytest.mark.asyncio
+    async def test_rejects_long_keyword(self):
+        from ansible_know.server import search_modules
+        result = await search_modules("a" * 201)
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_accepts_normal_keyword(self, mock_ansible_doc):
+        mock_ansible_doc.return_value = json.dumps(SAMPLE_MODULE_LIST)
+        from ansible_know.server import search_modules
+        result = await search_modules("copy")
+        assert "error" not in result
+
+
+class TestQueryValidation:
+    @pytest.mark.asyncio
+    async def test_rejects_long_query(self):
+        from ansible_know.server import search_docs
+        result = await search_docs("a" * 501)
+        assert len(result) == 1
+        assert "error" in result[0]
+
+
+class TestPathTraversal:
+    @pytest.mark.asyncio
+    async def test_get_skill_blocks_traversal(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
+        from ansible_know.server import get_skill
+        result = await get_skill("../../etc/passwd")
+        assert "invalid" in result.lower() or "error" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_generate_skill_blocks_etc(self):
+        from ansible_know.server import generate_skill
+        result = await generate_skill("ansible.builtin.copy", install_to="/etc/evil")
+        assert "not allowed" in result.lower() or "error" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_generate_skill_blocks_usr(self):
+        from ansible_know.server import generate_skill
+        result = await generate_skill("ansible.builtin.copy", install_to="/usr/local/evil")
+        assert "not allowed" in result.lower() or "error" in result.lower()
+
+
+class TestErrorSanitization:
+    @pytest.mark.asyncio
+    async def test_error_strips_paths(self):
+        from ansible_know.server import _sanitize_error
+        msg = "Failed at /home/user/.ansible/tmp/something: permission denied"
+        sanitized = _sanitize_error(msg)
+        assert "/home/user" not in sanitized
+        assert "<path>" in sanitized
+
+    @pytest.mark.asyncio
+    async def test_error_preserves_message(self):
+        from ansible_know.server import _sanitize_error
+        msg = "Module not found"
+        assert _sanitize_error(msg) == msg
+
+
+class TestOutputTruncation:
+    @pytest.mark.asyncio
+    async def test_truncates_large_response(self):
+        from ansible_know.server import _truncate_response, MAX_RESPONSE_SIZE
+        large = "x" * (MAX_RESPONSE_SIZE + 100)
+        result = _truncate_response(large)
+        assert len(result) < len(large)
+        assert "Truncated" in result
+
+    @pytest.mark.asyncio
+    async def test_preserves_small_response(self):
+        from ansible_know.server import _truncate_response
+        small = "hello world"
+        assert _truncate_response(small) == small
